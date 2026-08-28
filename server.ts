@@ -1,3 +1,13 @@
+/**
+ * AI STUDIO DEVELOPMENT & PREVIEW RUNNER ONLY
+ * ---------------------------------------------------------
+ * NOTE: This file is solely used for AI Studio local container development
+ * and interactive preview routing.
+ *
+ * PRODUCTION BACKEND: Python FastAPI (/backend/app/main.py, /backend/Dockerfile)
+ * SERVER.TS PRODUCTION ROLE: NO (Development/Preview Sandbox Only)
+ * ---------------------------------------------------------
+ */
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
