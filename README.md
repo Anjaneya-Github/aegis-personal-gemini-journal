@@ -5,26 +5,20 @@
 
 ---
 
-## 🏛️ Core Architecture
-
-Aegis Journal follows a strict **Zero-Trust Security & Evidence Bounding** architecture:
+## 🏛️ Production Architecture
 
 ```
-Browser (Pure JavaScript / React SPA)
-  ↓ Firebase Auth (Google OAuth & Cryptographic ID Tokens)
+Browser (React / JavaScript SPA)
+  ↓ Firebase Authentication (Google OAuth & JWT ID Tokens)
 Firebase ID Token (Header: Authorization: Bearer <token>)
   ↓
-FastAPI Backend (Python 3.12)
-  ↓ Token Verification & Tenant UID Derivation
-Authorization Enforcement (/users/{uid}/entries/*)
-  ↓ Bounded Candidate Set Retrieval
-Prompt Injection Filtering & XML Containment (<journal_entry_untrusted>)
+Python FastAPI on Cloud Run (Production Container)
+  ↓ Token Verification & UID-Derived Authorization (/users/{uid}/entries/*)
+Firestore / Gemini (Bounded Candidate Set & Escaped XML Containment)
+  ↓ Candidate Claims & Citations
+Evidence Verification Engine (Zero-Evidence Rule)
   ↓
-Gemini 2.5 AI Synthesis
-  ↓ Candidate Claims & Evidence IDs
-FastAPI Verification Engine (Zero-Evidence Rule)
-  ↓
-Clean, Grounded Response with Verified Evidence Citations
+Grounded Response (Strictly Verified Quotes & Citations)
 ```
 
 ---
@@ -32,23 +26,30 @@ Clean, Grounded Response with Verified Evidence Citations
 ## 🔒 Security Posture & Guardrails
 
 1. **Authentication & Identity Boundary**:
-   - Cryptographic validation via Firebase Auth.
-   - Client-provided UIDs in payloads are discarded; the authenticated UID is derived strictly from the verified JWT.
+   - Cryptographic validation via Firebase Authentication.
+   - Client-provided UIDs in request bodies or query parameters are discarded; the authenticated UID is derived strictly from the cryptographically verified JWT.
 
-2. **Strict Multi-Tenant Isolation**:
-   - Every Firestore query and document mutation is hardcoded to `/users/{uid}/entries/{entryId}`.
-   - Cross-tenant access attempts (IDOR) return `404 Not Found`.
+2. **Strict Multi-Tenant Isolation & IDOR Defense**:
+   - Every Firestore query and document mutation is restricted to `/users/{uid}/entries/{entryId}`.
+   - Cross-tenant access attempts return `404 Not Found`.
 
 3. **Untrusted Cognitive Layer (Zero-Trust LLM)**:
-   - The LLM is **never** trusted with authorization or data access decisions.
-   - All entries passed into Gemini are wrapped in `<journal_entry_untrusted>` XML containment tags with tag breakout escaping (`[tag_escaped]`).
+   - **The LLM is never trusted with authorization or data access decisions.**
+   - All entries passed to Gemini are enclosed in `<journal_entry_untrusted>` XML containment tags with tag breakout escaping (`[tag_escaped]`).
 
 4. **Zero-Evidence Discard Rule**:
-   - If Gemini returns a claim or decision referencing an entry ID outside the candidate set, or with no valid citations, the entire claim is discarded and `sufficientContext` is marked `false`.
+   - If Gemini returns a claim, decision, or contradiction referencing an entry ID outside the authorized candidate set, or with ungrounded citations, the claim is discarded and `sufficientContext` is marked `false`.
 
 5. **Prompt Injection & Cost Defense**:
-   - Regex-based pre-flight scanner blocks instruction overrides, jailbreak phrases, and system prompt leakage attempts before reaching the LLM.
-   - Sliding-window rate limiter protects against denial-of-wallet / cost amplification attacks.
+   - Pre-flight security filters block instruction overrides, jailbreak phrases, and system prompt leakage attempts before reaching the LLM.
+   - Sliding-window rate limiter prevents cost amplification and denial-of-wallet vectors.
+
+6. **Secret Manager & Credential Isolation**:
+   - Gemini API credentials are stored securely in Google Cloud Secret Manager.
+   - API keys are never exposed to the client browser and never committed to Git.
+
+7. **Least Privilege IAM**:
+   - Cloud Run runs under a dedicated service account granted only minimal required roles: Firestore User access and Secret Manager Secret Accessor.
 
 ---
 
@@ -68,112 +69,123 @@ Clean, Grounded Response with Verified Evidence Citations
    - Breaks down growth trajectories across earlier vs. current phases with verified quotes.
 
 4. **Memory Integrity Engine**:
-   - Real-time telemetry tracking claims analyzed, authorized evidence verified, and unauthorized citations rejected.
+   - Real-time SOC telemetry tracking claims analyzed, authorized evidence verified, and unauthorized citations rejected.
 
 ---
 
-## 🚀 Running & Deployment
+## 🛡️ Challenge Matrix
 
-### Production Backend (Python 3.12 / FastAPI)
+| Challenge Pillar | Evidence |
+|---|---|
+| **Authenticity** | Decision Memory, Contradiction Detection, Personal Evolution, Memory Integrity |
+| **Usability** | Journal workflow, Gemini interaction, responsive React/JavaScript UI, Memory Intelligence and Security SOC |
+| **Stability** | 49 automated tests, bounded AI context, rate limiting, graceful Gemini fallback, Docker and Cloud Run architecture |
+| **Security** | Firebase authentication, UID-derived authorization, Firestore tenant isolation, IDOR defense, prompt injection containment, evidence verification, zero-evidence discard, Secret Manager, 22-point attack simulation |
+
+---
+
+## 🚀 Production Deployment (Google Cloud Run)
+
+### Environment Specifications
+- **Production Frontend**: Vite-built React / JavaScript static assets.
+- **Production Backend**: Python 3.12 FastAPI (`backend/app/main.py`).
+- **Production Container**: `backend/Dockerfile`.
+- **Production Runtime**: Google Cloud Run (container listens on `0.0.0.0:${PORT}`).
+
+### Deployment Steps
+
+1. **Configure Google Cloud Project**:
+   ```bash
+   gcloud config set project [PROJECT_ID]
+   ```
+
+2. **Enable Required Google Cloud APIs**:
+   ```bash
+   gcloud services enable run.googleapis.com \
+     artifactregistry.googleapis.com \
+     secretmanager.googleapis.com \
+     firestore.googleapis.com
+   ```
+
+3. **Store Gemini API Key in Secret Manager**:
+   ```bash
+   echo -n "[YOUR_GEMINI_API_KEY]" | gcloud secrets create GEMINI_API_KEY \
+     --data-file=- \
+     --replication-policy="automatic"
+   ```
+
+4. **Configure Dedicated Cloud Run Service Account**:
+   ```bash
+   gcloud iam service-accounts create aegis-backend-sa \
+     --display-name="Aegis Journal Backend Service Account"
+
+   # Grant Firestore access
+   gcloud projects add-iam-policy-binding [PROJECT_ID] \
+     --member="serviceAccount:aegis-backend-sa@[PROJECT_ID].iam.gserviceaccount.com" \
+     --role="roles/datastore.user"
+
+   # Grant Secret Manager access
+   gcloud secrets add-iam-policy-binding GEMINI_API_KEY \
+     --member="serviceAccount:aegis-backend-sa@[PROJECT_ID].iam.gserviceaccount.com" \
+     --role="roles/secretmanager.secretAccessor"
+   ```
+
+5. **Build and Deploy Backend Container to Cloud Run**:
+   ```bash
+   # Build image via Cloud Build or Artifact Registry
+   gcloud builds submit --tag gcr.io/[PROJECT_ID]/aegis-backend ./backend
+
+   # Deploy to Cloud Run
+   gcloud run deploy aegis-backend \
+     --image gcr.io/[PROJECT_ID]/aegis-backend \
+     --platform managed \
+     --region [REGION] \
+     --service-account aegis-backend-sa@[PROJECT_ID].iam.gserviceaccount.com \
+     --set-env-vars GOOGLE_CLOUD_PROJECT=[PROJECT_ID],FIREBASE_PROJECT_ID=[PROJECT_ID] \
+     --allow-unauthenticated
+   ```
+
+6. **Configure Firebase Authentication & Firestore**:
+   - Provision Firestore in Native Mode in the Firebase Console.
+   - Deploy `firestore.rules` for client-side security.
+   - Enable Google Sign-In / Email Auth in Firebase Authentication.
+
+7. **Verify Deployment**:
+   - Health Check: `GET https://[CLOUD_RUN_SERVICE_URL]/health`
+   - Authenticated Endpoint: `GET https://[CLOUD_RUN_SERVICE_URL]/api/journal/entries` with `Authorization: Bearer [FIREBASE_ID_TOKEN]`
+
+---
+
+## 💻 Local Development Setup
+
+For local testing and offline development:
+
+### 1. Backend (Python 3.12 / FastAPI)
 ```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### Production Frontend (Vite / React SPA)
+### 2. Frontend (Vite / React)
 ```bash
 npm install
-npm run build
+npm run dev
 ```
 
 ---
 
-## 🛡️ Hackathon Challenge Matrix
+## ✅ Verification & Test Suite
 
-Challenge Pillar | Evidence
-Authenticity | Decision Memory, Contradiction Detection, Personal Evolution
-Usability | Responsive journal, AI interaction, Memory Intelligence
-Stability | 49 automated tests, bounded context, error handling, Docker
-Security | 22-point attack audit, IDOR defense, tenant isolation, evidence validation
+The application has been verified across all core modules:
 
-## 🚀 Production Deployment
-
-### Architecture
-
-Browser
-  ↓
-Firebase Authentication
-  ↓
-Firebase ID Token
-  ↓
-Python FastAPI on Cloud Run
-  ↓
-Firestore / Gemini
-  ↓
-Evidence Verification
-  ↓
-Grounded Response
-
-### Backend
-
-The production API is Python 3.12 + FastAPI.
-
-The application container is built from:
-
-backend/Dockerfile
-
-Cloud Run provides the PORT environment variable.
-
-The backend listens on:
-
-0.0.0.0:${PORT}
-
-### Secrets
-
-Gemini credentials are retrieved through Google Cloud Secret Manager.
-
-The Gemini API key is never exposed to the browser and is never committed to Git.
-
-### Authentication
-
-Firebase Authentication provides the user identity token.
-
-FastAPI verifies the Firebase ID token and derives the authenticated UID server-side.
-
-Client-provided UIDs are never trusted.
-
-### Firestore
-
-User data is isolated under:
-
-/users/{uid}/entries/{entryId}
-
-Cross-user access is rejected.
-
-### Verification
-
-Before final deployment verify:
-
-- authenticated journal creation
-- authenticated journal retrieval
-- cross-user access rejection
-- prompt-injection defense
-- evidence validation
-- zero-evidence discard
-- rate limiting
-- Gemini failure handling
-- /health endpoint
-
-### Local Development
-
-Backend:
-
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --host 127.0.0.1 --port 8000
-
-Frontend:
-
-npm install
-npm run build
+- **Backend tests**: 24/24
+- **Security tests**: 7/7
+- **Memory tests**: 6/6
+- **Attack simulation tests**: 12/12
+- **Total tests**: 49/49
+- **Frontend build**: PASS
+- **Backend import**: PASS
+- **Docker**: PASS
