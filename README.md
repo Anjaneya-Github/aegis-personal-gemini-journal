@@ -91,39 +91,89 @@ npm run build
 
 ## 🛡️ Hackathon Challenge Matrix
 
-| Challenge Pillar | Score Goal | Enforcement Implementation |
-|---|---|---|
-| **Authenticity** | **9.5/10** | Genuine personal reflection companion, authentic decision tracking, and thematic evolution synthesis |
-| **Usability** | **9.5/10** | Responsive dark aesthetic, Newsreader serif typography, seamless real-time search, and instant SOC telemetry |
-| **Stability** | **9.5/10** | Comprehensive error handling, graceful fallbacks, and resilient Firestore subscriptions |
-| **Security** | **9.5/10** | 22-point security self-audit, zero-trust LLM boundary, IDOR defense, and multi-tenant Firestore scoping |
+Challenge Pillar | Evidence
+Authenticity | Decision Memory, Contradiction Detection, Personal Evolution
+Usability | Responsive journal, AI interaction, Memory Intelligence
+Stability | 49 automated tests, bounded context, error handling, Docker
+Security | 22-point attack audit, IDOR defense, tenant isolation, evidence validation
 
-## Production Deployment
+## 🚀 Production Deployment
 
-Aegis uses Python FastAPI as the only production API.
-
-1. Build the backend container from backend/Dockerfile.
-2. Push the image to Artifact Registry.
-3. Deploy the container to Cloud Run.
-4. Attach the production service account.
-5. Grant the service account Secret Manager access to gemini-api-key.
-6. Configure Firebase Authentication.
-7. Configure Firestore.
-8. Configure the frontend with the Cloud Run API endpoint.
-9. Verify /health.
-10. Verify authenticated journal creation.
-11. Verify cross-user access is rejected.
-12. Verify prompt-injection defense.
-13. Verify evidence validation.
-
-Production flow:
+### Architecture
 
 Browser
-→ Firebase Auth
-→ Firebase ID Token
-→ Python FastAPI
-→ Firestore/Gemini
-→ Evidence Verification
-→ Response
+  ↓
+Firebase Authentication
+  ↓
+Firebase ID Token
+  ↓
+Python FastAPI on Cloud Run
+  ↓
+Firestore / Gemini
+  ↓
+Evidence Verification
+  ↓
+Grounded Response
 
-Secrets never reach the browser.
+### Backend
+
+The production API is Python 3.12 + FastAPI.
+
+The application container is built from:
+
+backend/Dockerfile
+
+Cloud Run provides the PORT environment variable.
+
+The backend listens on:
+
+0.0.0.0:${PORT}
+
+### Secrets
+
+Gemini credentials are retrieved through Google Cloud Secret Manager.
+
+The Gemini API key is never exposed to the browser and is never committed to Git.
+
+### Authentication
+
+Firebase Authentication provides the user identity token.
+
+FastAPI verifies the Firebase ID token and derives the authenticated UID server-side.
+
+Client-provided UIDs are never trusted.
+
+### Firestore
+
+User data is isolated under:
+
+/users/{uid}/entries/{entryId}
+
+Cross-user access is rejected.
+
+### Verification
+
+Before final deployment verify:
+
+- authenticated journal creation
+- authenticated journal retrieval
+- cross-user access rejection
+- prompt-injection defense
+- evidence validation
+- zero-evidence discard
+- rate limiting
+- Gemini failure handling
+- /health endpoint
+
+### Local Development
+
+Backend:
+
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+Frontend:
+
+npm install
+npm run build
