@@ -43,6 +43,10 @@ _integrity_metrics = {
     "authorizedEvidenceVerified": 0,
     "unauthorizedEvidenceRejected": 0,
     "unsupportedClaimsDiscarded": 0,
+    "insightsAnalyzed": 0,
+    "actionsProposed": 0,
+    "actionsApproved": 0,
+    "actionsRejected": 0,
 }
 
 
@@ -71,6 +75,10 @@ def get_current_integrity_stats() -> MemoryIntegrityStats:
         verifiedEvidencePercentage=round(percentage, 1),
         tenantIsolationStatus="ENFORCED",
         zeroEvidenceEnforcement="ACTIVE",
+        insightsAnalyzed=_integrity_metrics.get("insightsAnalyzed", 0),
+        actionsProposed=_integrity_metrics.get("actionsProposed", 0),
+        actionsApproved=_integrity_metrics.get("actionsApproved", 0),
+        actionsRejected=_integrity_metrics.get("actionsRejected", 0),
     )
 
 
@@ -659,6 +667,13 @@ def get_security_soc_status(uid: str) -> SecuritySOCStatusResponse:
             name="Sliding Window Rate Limiter",
             status="PASS",
             details="Per-user token bucket rate limiter protects AI-intensive synthesis routes against cost amplification attacks.",
+            testVerified=True,
+        ),
+        SecurityAuditItem(
+            category="Human-in-the-Loop",
+            name="Personal Action & Insight Verification",
+            status="ENFORCED",
+            details="Gemini proposes actions with verified citations. Human explicitly approves/modifies before persistence to /users/{uid}/actions.",
             testVerified=True,
         ),
     ]

@@ -28,6 +28,15 @@ from .models import (
     ContradictionDetectionResponse,
     PersonalEvolutionRequest,
     PersonalEvolutionResponse,
+    Insight,
+    SuggestedAction,
+    EvidenceReference,
+    ApprovedAction,
+    InsightAnalysisRequest,
+    InsightAnalysisResponse,
+    InsightActionApprovalRequest,
+    InsightActionRejectRequest,
+    ApprovedActionListResponse,
     MemoryIntegrityStats,
     SecuritySOCStatusResponse,
     ServerHealthResponse,
@@ -51,6 +60,13 @@ from .memory_intelligence import (
     analyze_personal_evolution,
     get_current_integrity_stats,
     get_security_soc_status,
+)
+from .action_engine import (
+    analyze_personal_actions_and_insights,
+    approve_personal_action,
+    reject_personal_action,
+    list_approved_actions,
+    delete_approved_action,
 )
 from .gemini_service import get_gemini_api_key
 from .errors import (
@@ -79,39 +95,42 @@ app = FastAPI(
 app.add_exception_handler(AegisJournalException, aegis_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
-# Rate Limiter State: IP/Client -> list of timestamps
-_rate_limit_records = {}
-RATE_LIMIT_WINDOW_SECONDS = 60
-MAX_AI_REQUESTS_PER_WINDOW = 30
+from .rate_limiter import (
+    limiter,
+    RATE_LIMIT_WINDOW_SECONDS,
+    MAX_AI_REQUESTS_PER_WINDOW,
+    MAX_STANDARD_REQUESTS_PER_WINDOW,
+)
 
 
 class SecurityAndRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 1. Rate limiting on AI-intensive endpoints to prevent cost amplification
+        # 1. Rate limiting on all application endpoints (stricter tier on AI routes)
         path = request.url.path
-        if (
-            path.startswith("/api/journal/ask")
-            or path.startswith("/api/journal/reflect")
-            or path.startswith("/api/journal/chat")
-            or path.startswith("/api/memory")
-        ):
+        if path.startswith("/api/") or path.startswith("/users/"):
             client_ip = request.client.host if request.client else "unknown"
             auth_header = request.headers.get("authorization", "")
-            identifier = f"{client_ip}:{auth_header[:30]}"
             
-            now = time.time()
-            timestamps = _rate_limit_records.get(identifier, [])
-            # Filter out timestamps older than window
-            timestamps = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW_SECONDS]
-            if len(timestamps) >= MAX_AI_REQUESTS_PER_WINDOW:
+            is_allowed, retry_after, remaining = await limiter.check_rate_limit(
+                client_ip=client_ip,
+                path=path,
+                auth_header=auth_header
+            )
+            if not is_allowed:
                 from fastapi.responses import JSONResponse
                 return JSONResponse(
                     status_code=429,
-                    content={"error": "Rate limit exceeded. Please wait a minute before making more AI requests."},
-                    headers={"Retry-After": "60"}
+                    content={
+                        "error": "Rate limit exceeded",
+                        "detail": f"Too many requests. Please retry in {retry_after} seconds.",
+                        "retryAfter": retry_after,
+                    },
+                    headers={
+                        "Retry-After": str(retry_after),
+                        "X-RateLimit-Limit": str(MAX_AI_REQUESTS_PER_WINDOW if "insights" in path or "memory" in path or "ask" in path or "reflect" in path or "chat" in path else MAX_STANDARD_REQUESTS_PER_WINDOW),
+                        "X-RateLimit-Remaining": str(remaining),
+                    }
                 )
-            timestamps.append(now)
-            _rate_limit_records[identifier] = timestamps
 
         # 2. Process request
         response = await call_next(request)
@@ -316,6 +335,76 @@ async def security_soc_endpoint(
 ):
     """Returns live security posture, architectural audit checks, and zero-trust verification status."""
     return get_security_soc_status(uid=user.uid)
+
+
+# -------------------------------------------------------------
+# Personal AI Action & Insight Engine Endpoints
+# -------------------------------------------------------------
+
+@app.post("/api/insights/analyze", response_model=InsightAnalysisResponse)
+@app.post("/users/me/insights/analyze", response_model=InsightAnalysisResponse)
+async def analyze_insights_endpoint(
+    payload: InsightAnalysisRequest = InsightAnalysisRequest(),
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """
+    Executes Personal AI Action & Insight Engine on authenticated user's bounded entries.
+    Zero-evidence rule enforced; Gemini cannot authorize documents or bypass verification.
+    """
+    logger.info(f"Analyzing AI Actions & Insights for user {user.uid}")
+    return await analyze_personal_actions_and_insights(uid=user.uid, request_data=payload)
+
+
+@app.get("/api/insights", response_model=ApprovedActionListResponse)
+@app.get("/users/me/insights", response_model=ApprovedActionListResponse)
+@app.get("/api/insights/actions", response_model=ApprovedActionListResponse)
+@app.get("/users/me/insights/actions", response_model=ApprovedActionListResponse)
+async def list_actions_endpoint(
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """Lists persisted, user-approved action commitments."""
+    return await list_approved_actions(uid=user.uid)
+
+
+@app.post("/api/insights/{insight_id}/approve", response_model=ApprovedAction)
+@app.post("/users/me/insights/{insight_id}/approve", response_model=ApprovedAction)
+async def approve_action_endpoint(
+    insight_id: str,
+    payload: Optional[InsightActionApprovalRequest] = None,
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """
+    Human-in-the-loop: Approves or modifies a suggested action, persisting it to user's actions collection.
+    """
+    logger.info(f"User {user.uid} approving insight action {insight_id}")
+    return await approve_personal_action(uid=user.uid, insight_id=insight_id, request_data=payload)
+
+
+@app.post("/api/insights/{insight_id}/reject")
+@app.post("/users/me/insights/{insight_id}/reject")
+async def reject_action_endpoint(
+    insight_id: str,
+    payload: Optional[InsightActionRejectRequest] = None,
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """
+    Human-in-the-loop: Explicitly rejects a suggested action.
+    """
+    logger.info(f"User {user.uid} rejecting insight action {insight_id}")
+    return await reject_personal_action(uid=user.uid, insight_id=insight_id, request_data=payload)
+
+
+@app.delete("/api/insights/actions/{action_id}")
+@app.delete("/users/me/insights/actions/{action_id}")
+async def delete_action_endpoint(
+    action_id: str,
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """
+    Deletes an approved user action. Scoped strictly to authenticated UID.
+    """
+    logger.info(f"User {user.uid} deleting action {action_id}")
+    return await delete_approved_action(uid=user.uid, action_id=action_id)
 
 
 # Static frontend hosting if dist directory exists (e.g. in container deployment)

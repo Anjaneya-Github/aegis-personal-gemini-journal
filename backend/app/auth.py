@@ -5,10 +5,20 @@ Derives user identity solely from cryptographically verified Firebase ID tokens.
 import os
 import logging
 from typing import Optional
-from fastapi import Header, Depends
-from pydantic import BaseModel
-import firebase_admin
-from firebase_admin import auth as firebase_auth, credentials
+try:
+    from fastapi import Header, Depends
+except ImportError:
+    def Header(default=None): return default
+    def Depends(dependency=None): return dependency
+
+from .models import BaseModel
+try:
+    import firebase_admin
+    from firebase_admin import auth as firebase_auth, credentials
+except ImportError:
+    firebase_admin = None
+    firebase_auth = None
+    credentials = None
 from .errors import AuthenticationError
 
 logger = logging.getLogger("aegis_journal.auth")

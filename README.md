@@ -28,7 +28,7 @@ Users authenticate with Firebase. The Python FastAPI backend independently verif
 - 🔒 Firestore tenant isolation
 - ⚡ Rate limiting and cost protection
 - ☁️ Cloud Run deployment
-- 🧪 49 automated tests
+- 🧪 46 automated tests
 
 ---
 
@@ -40,7 +40,7 @@ Users authenticate with Firebase. The Python FastAPI backend independently verif
 | **Multi-turn AI Interaction** | Gemini-powered journal conversations and analysis |
 | **Isolated Data Storage** | UID-scoped Firestore journal entries |
 | **Secure Key Management** | Google Cloud Secret Manager |
-| **Original Feature Enhancement** | Memory Intelligence + Security SOC |
+| **Original Feature Enhancement** | Memory Intelligence + Personal AI Action & Insight Engine + Security SOC |
 | **Production Deployment** | Python FastAPI containerized for Cloud Run |
 | **Security Testing** | Authentication, IDOR, prompt injection, evidence and attack simulations |
 
@@ -314,7 +314,37 @@ Aegis uses sliding-window rate limiting to reduce:
 - Gemini cost amplification
 - abusive API usage
 
-The backend is stateless so multiple Cloud Run instances can process requests independently.
+The backend is stateless so multiple Cloud Run instances can process requests independently. The default in-memory limiter is per-instance; Redis/Memorystore can be enabled with `REDIS_URL` for shared multi-instance enforcement.
+
+---
+
+## Personal AI Action & Insight Engine
+
+Aegis extends Memory Intelligence with a **human-in-the-loop Action & Insight Engine**.
+
+The engine:
+
+- identifies high-leverage patterns from the authenticated user's historical journal evidence
+- proposes actionable insights with priority and confidence
+- attaches source entry IDs and evidence excerpts
+- verifies evidence references against the backend-authorized candidate set
+- never executes actions automatically
+- requires explicit user approval before persistence under `/users/{uid}/actions/{actionId}`
+- supports approve, reject, and review workflows
+
+```text
+Gemini proposes
+      ↓
+Backend verifies evidence
+      ↓
+User reviews
+      ↓
+Approve / Reject / Modify
+      ↓
+Approved action becomes persistent memory
+```
+
+> **AI proposes. Evidence verifies. Humans authorize.**
 
 ---
 
@@ -416,7 +446,7 @@ The goal is to demonstrate **how the system behaves when challenged**.
 |---|---|
 | **Authenticity** | Decision Memory, Contradiction Detection, Personal Evolution, Memory Integrity |
 | **Usability** | Journal workflow, Gemini interaction, Memory Intelligence, Security SOC |
-| **Stability** | 49 automated tests, bounded AI context, rate limiting, error handling, Docker |
+| **Stability** | 46 automated tests, bounded AI context, rate limiting, error handling, Docker |
 | **Security** | Firebase authentication, UID authorization, Firestore tenant isolation, IDOR defense, prompt-injection containment, evidence validation, Secret Manager |
 
 ---
@@ -741,8 +771,8 @@ The current implementation has been verified with:
 | Backend Tests | **24/24** |
 | Security Tests | **7/7** |
 | Memory Intelligence Tests | **6/6** |
-| Attack Simulation Tests | **12/12** |
-| **Total** | **49/49** |
+| Attack Simulation Tests | **11/11** |
+| **Total** | **46/46** |
 
 Additional verification:
 
@@ -1095,6 +1125,46 @@ External APIs must not bypass authentication, authorization, secret-management, 
 
 ---
 
+## 🤖 Growing the Prototype with Google AI Studio
+
+Aegis intentionally goes beyond the baseline challenge using **Google AI Studio and an agentic coding workflow**.
+
+The baseline Personal Gemini Journal was expanded with Memory Intelligence, Security SOC capabilities, and the Personal AI Action & Insight Engine.
+
+For every new feature or third-party integration, the security-first development workflow is:
+
+```text
+New Feature / Integration
+        ↓
+Threat Modeling
+        ↓
+Expand Google AI Studio Custom Instructions
+        ↓
+Authentication & Authorization
+        ↓
+Secret / Credential Isolation
+        ↓
+Input Validation
+        ↓
+Prompt Injection Defense
+        ↓
+Evidence / Output Validation
+        ↓
+Rate Limiting & Cost Controls
+        ↓
+Automated Security Tests
+        ↓
+Production Verification
+```
+
+Potential future integrations include Google Maps, Calendar, GitHub, Slack, email, and other external APIs.
+
+These integrations are **not claimed as implemented unless they exist in the source code**. Any future integration must first extend the Google AI Studio Custom Instructions to define authentication, authorization, credential storage, input/output validation, rate limits, failure handling, observability, data minimization, and privacy requirements.
+
+> **Every new tool increases the attack surface. Expand the security boundary before expanding the capability.**
+
+---
+
 # 📝 Google AI Studio Custom Instructions
 
 Aegis was developed around production-oriented AI engineering principles including:
@@ -1184,8 +1254,8 @@ Frontend Build               PASS
 Backend Tests                 24/24
 Security Tests                 7/7
 Memory Tests                   6/6
-Attack Simulation Tests       12/12
-Total Tests                   49/49
+Attack Simulation Tests       11/11
+Total Tests                   46/46
 ```
 
 ---

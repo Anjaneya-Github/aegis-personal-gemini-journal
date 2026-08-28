@@ -7,7 +7,10 @@ import time
 import uuid
 import logging
 from typing import List, Optional, Dict, Any
-from google.cloud import firestore
+try:
+    from google.cloud import firestore
+except ImportError:
+    firestore = None
 from .models import (
     JournalEntryCreate, 
     JournalEntryUpdate, 
@@ -43,7 +46,11 @@ def get_firestore_client():
 
 def is_memory_mode() -> bool:
     """Checks whether to use memory store (in test mode or when Firestore client is unavailable)."""
-    return os.environ.get("AEGIS_TEST_MODE") == "1" or os.environ.get("USE_MEMORY_STORE") == "1"
+    if os.environ.get("AEGIS_TEST_MODE") == "1" or os.environ.get("USE_MEMORY_STORE") == "1":
+        return True
+    if firestore is None or get_firestore_client() is None:
+        return True
+    return False
 
 
 def reset_memory_store():

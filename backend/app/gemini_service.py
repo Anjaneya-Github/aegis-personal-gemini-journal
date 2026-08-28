@@ -6,13 +6,17 @@ import os
 import json
 import logging
 from typing import Optional, Dict, Any
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+    types = None
 from .errors import GeminiServiceError
 
 logger = logging.getLogger("aegis_journal.gemini")
 
-_genai_client: Optional[genai.Client] = None
+_genai_client = None
 DEFAULT_MODEL = "gemini-3.7-flash"
 
 
@@ -43,7 +47,7 @@ def get_gemini_api_key() -> Optional[str]:
     return None
 
 
-def get_gemini_client() -> genai.Client:
+def get_gemini_client() -> Any:
     """Lazily initializes and returns the Google GenAI client."""
     global _genai_client
     if _genai_client is None:

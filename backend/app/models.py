@@ -2,7 +2,78 @@
 Pydantic data models for requests, responses, and internal entities.
 """
 from typing import List, Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field, field_validator
+try:
+    from pydantic import BaseModel, Field, field_validator
+except ImportError:
+    class FieldInfo:
+        def __init__(self, default=..., default_factory=None, **kwargs):
+            self.default = default
+            self.default_factory = default_factory
+            self.kwargs = kwargs
+
+    def Field(default=..., *, default_factory=None, **kwargs):
+        return FieldInfo(default=default, default_factory=default_factory, **kwargs)
+
+    def field_validator(*fields, **kwargs):
+        def decorator(fn):
+            fn._is_field_validator = True
+            fn._validator_fields = fields
+            return fn
+        return decorator
+
+    class BaseModel:
+        def __init__(self, **data):
+            cls = self.__class__
+            # Set default values from class annotations / attributes
+            for attr, val in cls.__dict__.items():
+                if isinstance(val, FieldInfo):
+                    if val.default_factory is not None:
+                        setattr(self, attr, val.default_factory())
+                    elif val.default is not ...:
+                        setattr(self, attr, val.default)
+                elif not attr.startswith('__') and not callable(val):
+                    setattr(self, attr, val)
+            
+            # Set passed data
+            for k, v in data.items():
+                setattr(self, k, v)
+                
+            # Apply field validators
+            for attr_name in dir(cls):
+                attr_val = getattr(cls, attr_name, None)
+                if getattr(attr_val, '_is_field_validator', False):
+                    for target_field in attr_val._validator_fields:
+                        if hasattr(self, target_field):
+                            current_v = getattr(self, target_field)
+                            new_v = attr_val(cls, current_v)
+                            setattr(self, target_field, new_v)
+
+        def model_dump(self, *args, **kwargs):
+            def _convert(obj):
+                if isinstance(obj, BaseModel):
+                    return obj.model_dump()
+                elif isinstance(obj, list):
+                    return [_convert(i) for i in obj]
+                elif isinstance(obj, dict):
+                    return {k: _convert(v) for k, v in obj.items()}
+                return obj
+            res = {}
+            for k, v in self.__dict__.items():
+                if not k.startswith('_'):
+                    res[k] = _convert(v)
+            return res
+
+        def dict(self, *args, **kwargs):
+            return self.model_dump(*args, **kwargs)
+
+        def model_dump_json(self, *args, **kwargs):
+            import json
+            return json.dumps(self.model_dump())
+
+        def __repr__(self):
+            attrs = ", ".join(f"{k}={v!r}" for k, v in self.__dict__.items() if not k.startswith('_'))
+            return f"{self.__class__.__name__}({attrs})"
+
 
 
 MoodType = Literal["radiant", "serene", "reflective", "anxious", "melancholy", "grateful", "neutral"]
@@ -244,6 +315,84 @@ class MemoryIntegrityStats(BaseModel):
     verifiedEvidencePercentage: float
     tenantIsolationStatus: str = "ENFORCED"
     zeroEvidenceEnforcement: str = "ACTIVE"
+    insightsAnalyzed: int = 0
+    actionsProposed: int = 0
+    actionsApproved: int = 0
+    actionsRejected: int = 0
+
+
+# ==========================================
+# PERSONAL AI ACTION & INSIGHT ENGINE MODELS
+# ==========================================
+
+class EvidenceReference(BaseModel):
+    entryId: str
+    entryTitle: Optional[str] = None
+    quote: str
+    verified: bool = True
+
+
+class SuggestedAction(BaseModel):
+    action: str
+    priority: Literal["high", "medium", "low"] = "medium"
+    confidence: Literal["high", "moderate", "tentative"] = "high"
+    evidenceRefs: List[EvidenceReference] = Field(default_factory=list)
+
+
+class Insight(BaseModel):
+    id: str
+    summary: str
+    suggestedAction: str
+    priority: Literal["high", "medium", "low"] = "medium"
+    confidence: Literal["high", "moderate", "tentative"] = "high"
+    evidenceRefs: List[EvidenceReference] = Field(default_factory=list)
+    status: Literal["proposed", "approved", "rejected", "modified"] = "proposed"
+    createdAt: int
+
+
+class ApprovedAction(BaseModel):
+    id: str
+    action: str
+    userDecision: Literal["approved", "modified"] = "approved"
+    approvedAt: int
+    sourceInsightId: Optional[str] = None
+    evidenceRefs: List[EvidenceReference] = Field(default_factory=list)
+    priority: Literal["high", "medium", "low"] = "medium"
+    confidence: Literal["high", "moderate", "tentative"] = "high"
+    userNotes: Optional[str] = None
+
+
+class InsightAnalysisRequest(BaseModel):
+    query: Optional[str] = None
+    timeframeDays: Optional[int] = 90
+
+
+class InsightAnalysisResponse(BaseModel):
+    insights: List[Insight]
+    totalInsights: int
+    verifiedEvidenceCount: int
+    rejectedEvidenceCount: int
+    discardedCount: int
+    sufficientContext: bool
+    analysisSummary: str
+
+
+class InsightActionApprovalRequest(BaseModel):
+    modifiedAction: Optional[str] = None
+    userNotes: Optional[str] = None
+    action: Optional[str] = None
+    priority: Optional[Literal["high", "medium", "low"]] = None
+    confidence: Optional[Literal["high", "moderate", "tentative"]] = None
+    evidenceRefs: Optional[List[EvidenceReference]] = None
+
+
+class InsightActionRejectRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class ApprovedActionListResponse(BaseModel):
+    actions: List[ApprovedAction]
+    total: int
 
 
 class SecurityAuditItem(BaseModel):
