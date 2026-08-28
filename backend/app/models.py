@@ -163,9 +163,108 @@ class TimelineResponse(BaseModel):
     moodDistribution: Dict[str, int]
 
 
+# -------------------------------------------------------------
+# Aegis Memory Intelligence Models
+# -------------------------------------------------------------
+
+class DecisionItem(BaseModel):
+    decisionId: str
+    decision: str
+    reasoning: str
+    date: str
+    status: Literal["active", "completed", "superseded", "revisited"] = "active"
+    evidenceIds: List[str]
+    confidence: Literal["high", "moderate", "tentative"] = "high"
+    entryTitle: Optional[str] = None
+    evidenceQuote: Optional[str] = None
+
+
+class DecisionMemoryResponse(BaseModel):
+    decisions: List[DecisionItem]
+    totalDecisions: int
+    verifiedEvidenceCount: int
+    rejectedEvidenceCount: int
+    sufficientContext: bool
+    summary: str
+
+
+class ContradictionItem(BaseModel):
+    contradictionId: str
+    topic: str
+    earlierStatement: str
+    laterStatement: str
+    earlierEntryId: str
+    laterEntryId: str
+    earlierDate: str
+    laterDate: str
+    evidenceIds: List[str]
+    confidence: Literal["high", "moderate", "tentative"] = "high"
+    neutralAnalysis: str
+
+
+class ContradictionDetectionResponse(BaseModel):
+    contradictions: List[ContradictionItem]
+    totalDetected: int
+    verifiedEvidenceCount: int
+    rejectedEvidenceCount: int
+    sufficientContext: bool
+    disclaimer: str = "Neutral algorithmic detection of evolving perspectives. Not psychological diagnosis."
+
+
+class PersonalEvolutionItem(BaseModel):
+    theme: str
+    trend: str
+    earlierPhase: str
+    laterPhase: str
+    timePeriod: str
+    confidence: Literal["high", "moderate", "tentative"] = "high"
+    supportingEvidence: List[EvidenceCitation] = Field(default_factory=list)
+
+
+class PersonalEvolutionRequest(BaseModel):
+    query: Optional[str] = Field(default=None, max_length=500)
+    timeframeDays: Optional[int] = Field(default=90, ge=7, le=365)
+
+
+class PersonalEvolutionResponse(BaseModel):
+    synthesis: str
+    trajectorySummary: str
+    evolutionItems: List[PersonalEvolutionItem]
+    totalEntriesAnalyzed: int
+    verifiedEvidenceCount: int
+    rejectedEvidenceCount: int
+    sufficientContext: bool
+
+
+class MemoryIntegrityStats(BaseModel):
+    totalClaimsAnalyzed: int
+    authorizedEvidenceVerified: int
+    unauthorizedEvidenceRejected: int
+    unsupportedClaimsDiscarded: int
+    verifiedEvidencePercentage: float
+    tenantIsolationStatus: str = "ENFORCED"
+    zeroEvidenceEnforcement: str = "ACTIVE"
+
+
+class SecurityAuditItem(BaseModel):
+    category: str
+    name: str
+    status: Literal["PASS", "ACTIVE", "ENFORCED"]
+    details: str
+    testVerified: bool = True
+
+
+class SecuritySOCStatusResponse(BaseModel):
+    systemStatus: str
+    timestamp: int
+    audits: List[SecurityAuditItem]
+    integrityStats: MemoryIntegrityStats
+
+
 class ServerHealthResponse(BaseModel):
     status: str
     timestamp: int
     service: str
     geminiConfigured: bool
     firestoreConfigured: bool
+

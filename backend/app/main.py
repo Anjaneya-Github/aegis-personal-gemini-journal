@@ -24,6 +24,12 @@ from .models import (
     AskJournalResponse,
     ReflectionResponse,
     TimelineResponse,
+    DecisionMemoryResponse,
+    ContradictionDetectionResponse,
+    PersonalEvolutionRequest,
+    PersonalEvolutionResponse,
+    MemoryIntegrityStats,
+    SecuritySOCStatusResponse,
     ServerHealthResponse,
     MoodType,
 )
@@ -39,6 +45,13 @@ from .ask_journal import execute_ask_journal
 from .reflection import generate_journal_reflection
 from .chat import handle_companion_chat, handle_conversation_summary
 from .timeline import generate_journal_timeline
+from .memory_intelligence import (
+    extract_decision_memory,
+    detect_contradictions,
+    analyze_personal_evolution,
+    get_current_integrity_stats,
+    get_security_soc_status,
+)
 from .gemini_service import get_gemini_api_key
 from .errors import (
     AegisJournalException,
@@ -76,7 +89,12 @@ class SecurityAndRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # 1. Rate limiting on AI-intensive endpoints to prevent cost amplification
         path = request.url.path
-        if path.startswith("/api/journal/ask") or path.startswith("/api/journal/reflect") or path.startswith("/api/journal/chat"):
+        if (
+            path.startswith("/api/journal/ask")
+            or path.startswith("/api/journal/reflect")
+            or path.startswith("/api/journal/chat")
+            or path.startswith("/api/memory")
+        ):
             client_ip = request.client.host if request.client else "unknown"
             auth_header = request.headers.get("authorization", "")
             identifier = f"{client_ip}:{auth_header[:30]}"
@@ -119,6 +137,12 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+async def root_health_check():
+    """Unauthenticated health probe for Cloud Run and orchestrator probes."""
+    return {"status": "ok"}
+
+
 @app.get("/api/health", response_model=ServerHealthResponse)
 async def health_check():
     """Returns server health and service configuration status without leaking keys."""
@@ -135,6 +159,7 @@ async def health_check():
         geminiConfigured=gemini_configured,
         firestoreConfigured=firestore_configured,
     )
+
 
 
 # -------------------------------------------------------------
@@ -243,6 +268,54 @@ async def timeline_endpoint(
     """Computes emotional progression, milestones, and theme distribution."""
     logger.info(f"Generating timeline for user {user.uid}")
     return await generate_journal_timeline(uid=user.uid)
+
+
+# -------------------------------------------------------------
+# Aegis Memory Intelligence Endpoints
+# -------------------------------------------------------------
+
+@app.api_route("/api/memory/decisions", methods=["GET", "POST"], response_model=DecisionMemoryResponse)
+async def decision_memory_endpoint(
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """Extracts explicit user decisions backed strictly by verified candidate journal entries."""
+    logger.info(f"Extracting Decision Memory for user {user.uid}")
+    return await extract_decision_memory(uid=user.uid)
+
+
+@app.api_route("/api/memory/contradictions", methods=["GET", "POST"], response_model=ContradictionDetectionResponse)
+async def contradictions_endpoint(
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """Detects potential evolving stances/tensions with dual-entry verified evidence."""
+    logger.info(f"Detecting Contradictions for user {user.uid}")
+    return await detect_contradictions(uid=user.uid)
+
+
+@app.post("/api/memory/evolution", response_model=PersonalEvolutionResponse)
+async def personal_evolution_endpoint(
+    payload: PersonalEvolutionRequest = PersonalEvolutionRequest(),
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """Synthesizes longitudinal personal evolution with verified citations."""
+    logger.info(f"Analyzing Personal Evolution for user {user.uid}")
+    return await analyze_personal_evolution(uid=user.uid, request_data=payload)
+
+
+@app.get("/api/memory/integrity", response_model=MemoryIntegrityStats)
+async def memory_integrity_endpoint(
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """Returns real evidence verification metrics and integrity counters."""
+    return get_current_integrity_stats()
+
+
+@app.get("/api/security/soc", response_model=SecuritySOCStatusResponse)
+async def security_soc_endpoint(
+    user: AuthenticatedUser = Depends(verify_firebase_token),
+):
+    """Returns live security posture, architectural audit checks, and zero-trust verification status."""
+    return get_security_soc_status(uid=user.uid)
 
 
 # Static frontend hosting if dist directory exists (e.g. in container deployment)

@@ -4,8 +4,9 @@ import {
   Sparkles, 
   Compass, 
   MessageSquare, 
+  BrainCircuit,
+  ShieldCheck,
   Plus, 
-  Lock, 
   LogOut, 
 } from 'lucide-react';
 
@@ -34,8 +35,8 @@ export const Navbar = ({
               <span className="font-serif text-lg font-bold tracking-tight text-[#EDEDED]">
                 Gemini Journal
               </span>
-              <span className="ml-2 hidden rounded bg-[#27272A] px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase text-[#A1A1AA] sm:inline">
-                Private
+              <span className="ml-2 hidden rounded bg-[#27272A] px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase text-emerald-400 sm:inline">
+                Aegis Zero-Trust
               </span>
             </div>
           </button>
@@ -84,6 +85,19 @@ export const Navbar = ({
             </button>
 
             <button
+              id="nav-tab-memory"
+              onClick={() => onChangeView('memory')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                activeView === 'memory'
+                  ? 'bg-cyan-950/40 text-cyan-300 border border-cyan-800/60'
+                  : 'text-[#A1A1AA] hover:bg-[#1E1E22]/60 hover:text-cyan-300'
+              }`}
+            >
+              <BrainCircuit className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Memory Intel</span>
+            </button>
+
+            <button
               id="nav-tab-companion"
               onClick={() => onChangeView('companion')}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
@@ -94,6 +108,19 @@ export const Navbar = ({
             >
               <MessageSquare className="h-3.5 w-3.5 text-purple-400" />
               <span>Companion</span>
+            </button>
+
+            <button
+              id="nav-tab-soc"
+              onClick={() => onChangeView('soc')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                activeView === 'soc'
+                  ? 'bg-emerald-950/40 text-emerald-300 border border-emerald-800/60'
+                  : 'text-[#A1A1AA] hover:bg-[#1E1E22]/60 hover:text-emerald-300'
+              }`}
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Security SOC</span>
             </button>
           </nav>
         )}
@@ -115,12 +142,12 @@ export const Navbar = ({
 
               <button
                 id="navbar-security-audit-btn"
-                onClick={onOpenSecurityModal}
-                title="View Security & Privacy Architecture"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-[#27272A] bg-[#1E1E22] px-2.5 py-2 text-xs font-medium text-[#A1A1AA] transition hover:border-[#3F3F46] hover:text-[#EDEDED]"
+                onClick={() => onChangeView('soc')}
+                title="View Security Operations Center"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-900/50 bg-emerald-950/20 px-2.5 py-2 text-xs font-medium text-emerald-300 transition hover:border-emerald-700/60 hover:bg-emerald-950/40"
               >
-                <Lock className="h-3.5 w-3.5 text-emerald-400" />
-                <span className="hidden lg:inline">Private & Scoped</span>
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="hidden lg:inline">SOC Active</span>
               </button>
 
               {/* User Profile Pill */}
@@ -167,10 +194,10 @@ export const Navbar = ({
 
       {/* Mobile Sub-Navigation Bar */}
       {user && (
-        <div className="flex items-center justify-around border-t border-[#27272A] bg-[#161618] px-2 py-2 md:hidden">
+        <div className="flex items-center justify-around border-t border-[#27272A] bg-[#161618] px-2 py-2 md:hidden overflow-x-auto">
           <button
             onClick={() => onChangeView('list')}
-            className={`flex flex-col items-center gap-0.5 text-[11px] ${
+            className={`flex flex-col items-center gap-0.5 text-[11px] px-2 ${
               activeView === 'list' || activeView === 'detail' || activeView === 'editor'
                 ? 'text-[#EDEDED] font-semibold'
                 : 'text-[#71717A]'
@@ -181,7 +208,7 @@ export const Navbar = ({
           </button>
           <button
             onClick={() => onChangeView('ask')}
-            className={`flex flex-col items-center gap-0.5 text-[11px] ${
+            className={`flex flex-col items-center gap-0.5 text-[11px] px-2 ${
               activeView === 'ask' ? 'text-amber-300 font-semibold' : 'text-[#71717A]'
             }`}
           >
@@ -190,7 +217,7 @@ export const Navbar = ({
           </button>
           <button
             onClick={() => onChangeView('reflect')}
-            className={`flex flex-col items-center gap-0.5 text-[11px] ${
+            className={`flex flex-col items-center gap-0.5 text-[11px] px-2 ${
               activeView === 'reflect' ? 'text-indigo-300 font-semibold' : 'text-[#71717A]'
             }`}
           >
@@ -198,16 +225,26 @@ export const Navbar = ({
             <span>Reflect</span>
           </button>
           <button
-            onClick={() => onChangeView('companion')}
-            className={`flex flex-col items-center gap-0.5 text-[11px] ${
-              activeView === 'companion' ? 'text-purple-300 font-semibold' : 'text-[#71717A]'
+            onClick={() => onChangeView('memory')}
+            className={`flex flex-col items-center gap-0.5 text-[11px] px-2 ${
+              activeView === 'memory' ? 'text-cyan-300 font-semibold' : 'text-[#71717A]'
             }`}
           >
-            <MessageSquare className="h-4 w-4" />
-            <span>Companion</span>
+            <BrainCircuit className="h-4 w-4" />
+            <span>Memory</span>
+          </button>
+          <button
+            onClick={() => onChangeView('soc')}
+            className={`flex flex-col items-center gap-0.5 text-[11px] px-2 ${
+              activeView === 'soc' ? 'text-emerald-300 font-semibold' : 'text-[#71717A]'
+            }`}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            <span>SOC</span>
           </button>
         </div>
       )}
     </header>
   );
 };
+

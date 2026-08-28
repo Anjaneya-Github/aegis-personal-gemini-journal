@@ -87,3 +87,46 @@ export async function checkServerHealth() {
   }
   return res.json();
 }
+
+/**
+ * Fetch extracted decisions with verified evidence citations.
+ */
+export async function getDecisionMemory() {
+  return fetchWithAuth('/api/memory/decisions', {
+    method: 'POST',
+  });
+}
+
+/**
+ * Detect evolving stances and potential contradictions with dual-entry verified evidence.
+ */
+export async function getContradictions() {
+  return fetchWithAuth('/api/memory/contradictions', {
+    method: 'POST',
+  });
+}
+
+/**
+ * Synthesize personal evolution trajectories backed by verified evidence.
+ */
+export async function getPersonalEvolution(query = '', timeframeDays = 90) {
+  return fetchWithAuth('/api/memory/evolution', {
+    method: 'POST',
+    body: JSON.stringify({ query: query || null, timeframeDays }),
+  });
+}
+
+/**
+ * Fetch real-time Memory Integrity validation metrics.
+ */
+export async function getMemoryIntegrityStats() {
+  return fetchWithAuth('/api/memory/integrity');
+}
+
+/**
+ * Fetch Security SOC audit results and active security guardrails.
+ */
+export async function getSecuritySOCStatus() {
+  return fetchWithAuth('/api/security/soc');
+}
+

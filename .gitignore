@@ -1,8 +1,31 @@
+# Dependencies & Virtual Environments
 node_modules/
+.venv/
+env/
+venv/
+
+# Build & Outputs
 build/
 dist/
 coverage/
+*.egg-info/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+credentials*.json
+service-account*.json
+*.pem
+*.key
+
+# System & Logs
 .DS_Store
 *.log
-.env*
-!.env.example
+

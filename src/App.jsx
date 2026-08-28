@@ -14,6 +14,8 @@ import { JournalDetail } from './components/JournalDetail';
 import { AskJournalView } from './components/AskJournalView';
 import { ReflectionView } from './components/ReflectionView';
 import { CompanionChatView } from './components/CompanionChatView';
+import { MemoryIntelligenceView } from './components/MemoryIntelligenceView';
+import { SecuritySOCView } from './components/SecuritySOCView';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { SecurityNotice } from './components/SecurityNotice';
 
@@ -276,6 +278,19 @@ export default function App() {
             {activeView === 'companion' && (
               <CompanionChatView
                 onDraftCreated={handleDraftCreatedFromCompanion}
+              />
+            )}
+
+            {activeView === 'memory' && (
+              <MemoryIntelligenceView
+                entries={entries}
+                onSelectEntry={handleSelectEntry}
+              />
+            )}
+
+            {activeView === 'soc' && (
+              <SecuritySOCView
+                user={currentUser}
               />
             )}
 
