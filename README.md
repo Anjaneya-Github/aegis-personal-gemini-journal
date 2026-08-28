@@ -97,3 +97,33 @@ npm run build
 | **Usability** | **9.5/10** | Responsive dark aesthetic, Newsreader serif typography, seamless real-time search, and instant SOC telemetry |
 | **Stability** | **9.5/10** | Comprehensive error handling, graceful fallbacks, and resilient Firestore subscriptions |
 | **Security** | **9.5/10** | 22-point security self-audit, zero-trust LLM boundary, IDOR defense, and multi-tenant Firestore scoping |
+
+## Production Deployment
+
+Aegis uses Python FastAPI as the only production API.
+
+1. Build the backend container from backend/Dockerfile.
+2. Push the image to Artifact Registry.
+3. Deploy the container to Cloud Run.
+4. Attach the production service account.
+5. Grant the service account Secret Manager access to gemini-api-key.
+6. Configure Firebase Authentication.
+7. Configure Firestore.
+8. Configure the frontend with the Cloud Run API endpoint.
+9. Verify /health.
+10. Verify authenticated journal creation.
+11. Verify cross-user access is rejected.
+12. Verify prompt-injection defense.
+13. Verify evidence validation.
+
+Production flow:
+
+Browser
+→ Firebase Auth
+→ Firebase ID Token
+→ Python FastAPI
+→ Firestore/Gemini
+→ Evidence Verification
+→ Response
+
+Secrets never reach the browser.
