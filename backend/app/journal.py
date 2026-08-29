@@ -33,7 +33,7 @@ def get_firestore_client():
     global _firestore_client
     if _firestore_client is None:
         try:
-            database_id = os.environ.get("FIRESTORE_DATABASE_ID") or "ai-studio-6cb3b1bb-cf5b-4920-960c-7ddf5e0901f1"
+            database_id = os.environ.get("FIRESTORE_DATABASE_ID") or "(default)"
             project_id = os.environ.get("FIREBASE_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT")
             if project_id and database_id:
                 _firestore_client = firestore.Client(project=project_id, database=database_id)
@@ -120,9 +120,9 @@ async def list_journal_entries(
                 )
                 docs = query.stream()
                 for doc in docs:
-                    d = doc.to_dict()
-                    if d:
-                        results.append(d)
+                    d = doc.to_dict() or {}
+                    d["id"] = doc.id
+                    results.append(d)
         except Exception as e:
             logger.warning(f"Live Firestore list failed: {e}. Using memory store.")
 

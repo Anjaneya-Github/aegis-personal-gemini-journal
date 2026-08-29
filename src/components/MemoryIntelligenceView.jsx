@@ -14,16 +14,23 @@ import {
   Layers,
   ArrowRight,
   ShieldAlert,
+  Check,
+  X,
+  Pencil,
+  WandSparkles,
 } from 'lucide-react';
 import {
   getDecisionMemory,
   getContradictions,
   getPersonalEvolution,
   getMemoryIntegrityStats,
+  analyzePersonalInsights,
+  approvePersonalInsight,
+  rejectPersonalInsight,
 } from '../services/aiJournalService';
 
 export const MemoryIntelligenceView = ({ entries, onSelectEntry }) => {
-  const [activeTab, setActiveTab] = useState('decisions'); // 'decisions' | 'contradictions' | 'evolution' | 'integrity'
+  const [activeTab, setActiveTab] = useState('decisions'); // 'decisions' | 'actions' | 'contradictions' | 'evolution' | 'integrity'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -32,6 +39,13 @@ export const MemoryIntelligenceView = ({ entries, onSelectEntry }) => {
   const [contradictionData, setContradictionData] = useState(null);
   const [evolutionData, setEvolutionData] = useState(null);
   const [integrityStats, setIntegrityStats] = useState(null);
+
+  // HITL AI action proposals
+  const [insightData, setInsightData] = useState(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightActionLoading, setInsightActionLoading] = useState(null);
+  const [editingInsightId, setEditingInsightId] = useState(null);
+  const [editedActions, setEditedActions] = useState({});
 
   // Evolution custom query
   const [evolutionQuery, setEvolutionQuery] = useState('');
@@ -67,6 +81,75 @@ export const MemoryIntelligenceView = ({ entries, onSelectEntry }) => {
   const handleRunEvolution = (e) => {
     e?.preventDefault();
     loadTabData('evolution');
+  };
+
+
+  const handleAnalyzeInsights = async () => {
+    setInsightLoading(true);
+    setError(null);
+
+    try {
+      const result = await analyzePersonalInsights(null, 90);
+      setInsightData(result);
+    } catch (err) {
+      setError(err.message || 'Failed to generate AI action proposals');
+    } finally {
+      setInsightLoading(false);
+    }
+  };
+
+  const handleApproveInsight = async (insight) => {
+    setInsightActionLoading(insight.id);
+    setError(null);
+
+    try {
+      const modifiedAction = editedActions[insight.id]?.trim();
+
+      await approvePersonalInsight(insight.id, {
+        ...(modifiedAction ? { modifiedAction } : {}),
+      });
+
+      setInsightData((prev) => ({
+        ...prev,
+        insights: (prev?.insights || []).filter(
+          (item) => item.id !== insight.id
+        ),
+        totalInsights: Math.max(
+          0,
+          (prev?.totalInsights || 1) - 1
+        ),
+      }));
+
+      setEditingInsightId(null);
+    } catch (err) {
+      setError(err.message || 'Failed to approve action');
+    } finally {
+      setInsightActionLoading(null);
+    }
+  };
+
+  const handleRejectInsight = async (insight) => {
+    setInsightActionLoading(insight.id);
+    setError(null);
+
+    try {
+      await rejectPersonalInsight(insight.id);
+
+      setInsightData((prev) => ({
+        ...prev,
+        insights: (prev?.insights || []).filter(
+          (item) => item.id !== insight.id
+        ),
+        totalInsights: Math.max(
+          0,
+          (prev?.totalInsights || 1) - 1
+        ),
+      }));
+    } catch (err) {
+      setError(err.message || 'Failed to reject action');
+    } finally {
+      setInsightActionLoading(null);
+    }
   };
 
   return (
@@ -120,7 +203,25 @@ export const MemoryIntelligenceView = ({ entries, onSelectEntry }) => {
         </button>
 
         <button
-          id="tab-contradictions-btn"
+          id="tab-ai-actions-btn"
+          onClick={() => setActiveTab('actions')}
+          className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
+            activeTab === 'actions'
+              ? 'bg-emerald-950/50 text-emerald-300 border border-emerald-800/60'
+              : 'text-[#A1A1AA] hover:bg-[#1E1E22] hover:text-[#EDEDED]'
+          }`}
+        >
+          <WandSparkles className="h-3.5 w-3.5" />
+          <span>AI Action Proposals</span>
+          {insightData?.totalInsights !== undefined && (
+            <span className="ml-1 rounded-full bg-emerald-900/60 px-1.5 py-0.2 text-[10px] text-emerald-200">
+              {insightData.totalInsights}
+            </span>
+          )}
+        </button>
+
+        <button
+          id="tab-contradictions-btn\"
           onClick={() => setActiveTab('contradictions')}
           className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
             activeTab === 'contradictions'
@@ -273,7 +374,237 @@ export const MemoryIntelligenceView = ({ entries, onSelectEntry }) => {
         </div>
       )}
 
-      {/* TAB 2: CONTRADICTION DETECTION */}
+      {/* TAB 2: AI ACTION PROPOSALS / HUMAN-IN-THE-LOOP */}
+      {!loading && !error && activeTab === 'actions' && (
+        <div>
+          <div className="mb-6 rounded-2xl border border-emerald-900/40 bg-emerald-950/10 p-5">
+            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+              <WandSparkles className="h-4 w-4" />
+              <span>AI Action Proposals</span>
+            </div>
+
+            <p className="mt-2 text-sm leading-relaxed text-[#D4D4D8]">
+              Evidence-grounded recommendations generated from your authorized
+              journal records. No AI recommendation becomes an action without
+              explicit human approval.
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-[#27272A] pt-3 text-[11px] text-[#71717A]">
+              <span>
+                Verified Evidence:{' '}
+                <strong className="text-emerald-300">
+                  {insightData?.verifiedEvidenceCount ?? 0}
+                </strong>
+              </span>
+              <span>
+                Zero-Evidence Rule:{' '}
+                <strong className="text-emerald-400">ENFORCED</strong>
+              </span>
+              <span>
+                Human Approval:{' '}
+                <strong className="text-emerald-400">REQUIRED</strong>
+              </span>
+            </div>
+          </div>
+
+          <div className="mb-5 flex justify-end">
+            <button
+              id="analyze-ai-actions-btn"
+              onClick={handleAnalyzeInsights}
+              disabled={insightLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-800/60 bg-emerald-950/40 px-4 py-2.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-900/40 disabled:opacity-50"
+            >
+              <WandSparkles
+                className={`h-3.5 w-3.5 ${
+                  insightLoading ? 'animate-spin' : ''
+                }`}
+              />
+              {insightLoading ? 'Analyzing...' : 'Analyze for AI Actions'}
+            </button>
+          </div>
+
+          {!insightData && !insightLoading && (
+            <div className="rounded-2xl border border-[#27272A] bg-[#161618] p-12 text-center">
+              <WandSparkles className="mx-auto h-8 w-8 text-[#52525B]" />
+              <h3 className="mt-3 text-sm font-semibold text-[#EDEDED]">
+                No AI proposals generated yet
+              </h3>
+              <p className="mx-auto mt-1 max-w-md text-xs text-[#71717A]">
+                Analyze your journal to generate evidence-grounded action
+                proposals. Every proposal requires your explicit decision.
+              </p>
+            </div>
+          )}
+
+          {insightData && insightData.insights?.length === 0 && (
+            <div className="rounded-2xl border border-[#27272A] bg-[#161618] p-12 text-center">
+              <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+              <h3 className="mt-3 text-sm font-semibold text-[#EDEDED]">
+                No actionable proposals detected
+              </h3>
+              <p className="mx-auto mt-1 max-w-md text-xs text-[#71717A]">
+                No sufficiently grounded AI action requires your approval.
+              </p>
+            </div>
+          )}
+
+          <div className="grid gap-4">
+            {insightData?.insights?.map((insight) => {
+              const isBusy = insightActionLoading === insight.id;
+              const isEditing = editingInsightId === insight.id;
+
+              return (
+                <div
+                  key={insight.id}
+                  className="rounded-2xl border border-[#27272A] bg-[#161618] p-5"
+                >
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-emerald-800/50 bg-emerald-950/50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                      Proposed
+                    </span>
+
+                    {insight.priority && (
+                      <span className="text-[10px] uppercase text-[#71717A]">
+                        {insight.priority} priority
+                      </span>
+                    )}
+
+                    {insight.confidence && (
+                      <span className="text-[10px] uppercase text-[#71717A]">
+                        {insight.confidence} confidence
+                      </span>
+                    )}
+                  </div>
+
+                  {insight.summary && (
+                    <h3 className="text-sm font-semibold text-[#EDEDED]">
+                      {insight.summary}
+                    </h3>
+                  )}
+
+                  <div className="mt-4 rounded-xl border border-[#27272A] bg-[#111113] p-4">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#71717A]">
+                      Suggested Action
+                    </div>
+
+                    {isEditing ? (
+                      <textarea
+                        value={
+                          editedActions[insight.id] ??
+                          insight.suggestedAction ??
+                          ''
+                        }
+                        onChange={(e) =>
+                          setEditedActions((prev) => ({
+                            ...prev,
+                            [insight.id]: e.target.value,
+                          }))
+                        }
+                        rows={3}
+                        className="w-full rounded-lg border border-emerald-800/60 bg-[#18181B] p-3 text-xs text-[#EDEDED] outline-none focus:border-emerald-500"
+                      />
+                    ) : (
+                      <p className="text-sm leading-relaxed text-[#D4D4D8]">
+                        {insight.suggestedAction}
+                      </p>
+                    )}
+                  </div>
+
+                  {insight.evidenceRefs?.length > 0 && (
+                    <div className="mt-4">
+                      <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-cyan-400">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Verified Evidence
+                      </div>
+
+                      <div className="space-y-2">
+                        {insight.evidenceRefs.map((evidence, idx) => (
+                          <div
+                            key={`${insight.id}-${idx}`}
+                            className="rounded-lg border border-cyan-900/30 bg-cyan-950/10 p-3"
+                          >
+                            <p className="text-xs italic leading-relaxed text-[#A1A1AA]">
+                              "{evidence.quote || evidence.text || ''}"
+                            </p>
+
+                            {(evidence.entryTitle || evidence.entryId) && (
+                              <p className="mt-1 text-[10px] text-cyan-400">
+                                Source:{' '}
+                                {evidence.entryTitle || evidence.entryId}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[#27272A] pt-4">
+                    {isEditing ? (
+                      <>
+                        <button
+                          onClick={() => setEditingInsightId(null)}
+                          disabled={isBusy}
+                          className="rounded-lg border border-[#3F3F46] px-3 py-2 text-xs font-semibold text-[#A1A1AA] hover:bg-[#27272A]"
+                        >
+                          Cancel
+                        </button>
+
+                        <button
+                          onClick={() => handleApproveInsight(insight)}
+                          disabled={isBusy}
+                          className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          {isBusy ? 'Saving...' : 'Approve Modified Action'}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleRejectInsight(insight)}
+                          disabled={isBusy}
+                          className="inline-flex items-center gap-2 rounded-lg border border-red-900/60 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-950/30 disabled:opacity-50"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Reject
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setEditedActions((prev) => ({
+                              ...prev,
+                              [insight.id]: insight.suggestedAction || '',
+                            }));
+                            setEditingInsightId(insight.id);
+                          }}
+                          disabled={isBusy}
+                          className="inline-flex items-center gap-2 rounded-lg border border-amber-800/60 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-950/30 disabled:opacity-50"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Modify
+                        </button>
+
+                        <button
+                          onClick={() => handleApproveInsight(insight)}
+                          disabled={isBusy}
+                          className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          {isBusy ? 'Approving...' : 'Approve'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: CONTRADICTION DETECTION */}
+
       {!loading && !error && activeTab === 'contradictions' && (
         <div>
           <div className="mb-4 rounded-xl border border-amber-900/40 bg-amber-950/10 p-3.5 text-xs text-amber-300/90">

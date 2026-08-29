@@ -100,6 +100,48 @@ export async function getDecisionMemory() {
   });
 }
 
+
+/**
+ * Analyze the authenticated user's journal for actionable AI insights.
+ */
+export async function analyzePersonalInsights(query = null, timeframeDays = 90) {
+  return fetchWithAuth('/users/me/insights/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ query, timeframeDays }),
+  });
+}
+
+/**
+ * Approve or modify a proposed AI action.
+ */
+export async function approvePersonalInsight(insightId, payload = {}) {
+  if (!insightId) throw new Error('Insight ID is required');
+
+  return fetchWithAuth(
+    `/users/me/insights/${encodeURIComponent(insightId)}/approve`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+/**
+ * Reject a proposed AI action.
+ */
+export async function rejectPersonalInsight(insightId, reason = null) {
+  if (!insightId) throw new Error('Insight ID is required');
+
+  return fetchWithAuth(
+    `/users/me/insights/${encodeURIComponent(insightId)}/reject`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }
+  );
+}
+
+
 /**
  * Detect evolving stances and potential contradictions with dual-entry verified evidence.
  */
