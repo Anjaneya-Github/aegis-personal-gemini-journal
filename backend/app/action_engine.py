@@ -234,10 +234,43 @@ async def analyze_personal_actions_and_insights(
             )
             verified_insights.append(insight_obj)
 
-            # Store in ephemeral cache for approval lookup
-            if uid not in _ephemeral_insights_cache:
-                _ephemeral_insights_cache[uid] = {}
-            _ephemeral_insights_cache[uid][insight_id] = insight_obj
+            # Persist the verified proposal in the authenticated user's
+            # private Firestore namespace so approval works across
+            # Cloud Run instances.
+            if not is_memory_mode():
+                try:
+                    client = get_firestore_client()
+                    if client:
+                        proposal_ref = (
+                            client.collection("users")
+                            .document(uid)
+                            .collection("insights")
+                            .document(insight_id)
+                        )
+
+                        proposal_data = insight_obj.model_dump()
+                        proposal_data["userId"] = uid
+
+                        proposal_ref.set(proposal_data)
+
+                        logger.info(
+                            "[Insight Engine] Persisted proposal %s for user %s",
+                            insight_id,
+                            uid,
+                        )
+                except Exception as e:
+                    logger.error(
+                        "[Insight Engine] Failed to persist proposal %s: %s",
+                        insight_id,
+                        e,
+                    )
+                    raise
+
+            # Keep memory cache only for test/offline mode.
+            if is_memory_mode():
+                if uid not in _ephemeral_insights_cache:
+                    _ephemeral_insights_cache[uid] = {}
+                _ephemeral_insights_cache[uid][insight_id] = insight_obj
 
     # Update global telemetry metrics
     record_integrity_stats(
@@ -278,9 +311,60 @@ async def approve_personal_action(
     action_id = f"action-{uuid.uuid4().hex[:8]}"
     now_ms = int(time.time() * 1000)
 
-    cached_insight = _ephemeral_insights_cache.get(uid, {}).get(insight_id)
+    # Production HITL rule:
+    # The proposal MUST come from durable, authenticated user-scoped
+    # Firestore state. Never approve an unknown insight and never
+    # manufacture a fallback action.
+    cached_insight = None
 
-    # Determine action text and decision type
+    if is_memory_mode():
+        cached_insight = _ephemeral_insights_cache.get(uid, {}).get(insight_id)
+
+        if not cached_insight:
+            raise NotFoundError(f"Insight {insight_id} not found")
+
+        if cached_insight.status != "proposed":
+            raise UnauthorizedError(
+                f"Insight {insight_id} is no longer available for approval"
+            )
+    else:
+        client = get_firestore_client()
+
+        if not client:
+            logger.error(
+                "[HITL] Firestore unavailable during approval for insight %s",
+                insight_id,
+            )
+            raise RuntimeError("Approval service temporarily unavailable")
+
+        proposal_ref = (
+            client.collection("users")
+            .document(uid)
+            .collection("insights")
+            .document(insight_id)
+        )
+
+        proposal_doc = proposal_ref.get()
+
+        if not proposal_doc.exists:
+            raise NotFoundError(f"Insight {insight_id} not found")
+
+        proposal_data = proposal_doc.to_dict() or {}
+
+        # Defense-in-depth tenant isolation.
+        if proposal_data.get("userId") != uid:
+            raise UnauthorizedError(
+                "Insight does not belong to authenticated user"
+            )
+
+        cached_insight = Insight(**proposal_data)
+
+        if cached_insight.status != "proposed":
+            raise UnauthorizedError(
+                f"Insight {insight_id} is no longer available for approval"
+            )
+
+    # Determine action text and decision type.
     modified_text = request_data.modifiedAction if request_data else None
     direct_action = request_data.action if request_data else None
     notes = request_data.userNotes if request_data else None
@@ -290,13 +374,17 @@ async def approve_personal_action(
         decision = "modified"
     elif direct_action:
         final_action = direct_action.strip()
-        decision = "modified" if (cached_insight and cached_insight.suggestedAction != final_action) else "approved"
-    elif cached_insight:
+        decision = (
+            "modified"
+            if cached_insight.suggestedAction != final_action
+            else "approved"
+        )
+    else:
         final_action = cached_insight.suggestedAction
         decision = "approved"
-    else:
-        final_action = f"Action commitment {insight_id}"
-        decision = "approved"
+
+    if not final_action:
+        raise ValueError("Approved action cannot be empty")
 
     evidence_refs = []
     if request_data and request_data.evidenceRefs:
@@ -338,10 +426,16 @@ async def approve_personal_action(
                 doc_ref = client.collection("users").document(uid).collection("actions").document(action_id)
                 doc_ref.set(doc_data)
         except Exception as e:
-            logger.warning(f"Firestore action write failed: {e}. Fallback to memory store.")
-            if uid not in _memory_actions_store:
-                _memory_actions_store[uid] = {}
-            _memory_actions_store[uid][action_id] = doc_data
+            logger.error(
+                "[HITL] Firestore action persistence failed for %s: %s",
+                action_id,
+                e,
+            )
+            # Fail closed: never report an approved action when durable
+            # persistence has failed.
+            raise RuntimeError(
+                "Action could not be durably persisted. Please retry."
+            ) from e
 
     # Update SOC metrics
     _integrity_metrics["actionsApproved"] = _integrity_metrics.get("actionsApproved", 0) + 1

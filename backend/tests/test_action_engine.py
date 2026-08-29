@@ -1,3 +1,7 @@
+import os
+os.environ["AEGIS_TEST_MODE"] = "1"
+os.environ["USE_MEMORY_STORE"] = "1"
+
 """
 Comprehensive Test Suite for Personal AI Action & Insight Engine.
 Validates all 16 security and functional invariants:
@@ -59,6 +63,7 @@ from backend.app.errors import (
 class TestActionAndInsightEngine(unittest.TestCase):
     def setUp(self):
         reset_actions_memory_store()
+
         self.alice_uid = "user-alice-111"
         self.bob_uid = "user-bob-222"
 
@@ -67,7 +72,7 @@ class TestActionAndInsightEngine(unittest.TestCase):
             userId=self.alice_uid,
             title="Focusing on Core Architecture",
             content="I decided to prioritize backend zero-trust security and refactor the auth middleware every morning.",
-            mood="focused",
+            mood="reflective",
             tags=["architecture", "security"],
             wordCount=15,
             createdAt=1700000000000,
@@ -79,12 +84,45 @@ class TestActionAndInsightEngine(unittest.TestCase):
             userId=self.bob_uid,
             title="Bob's Secret Journal",
             content="Bob is planning a cross-country move next month.",
-            mood="excited",
+            mood="grateful",
             tags=["travel"],
             wordCount=9,
             createdAt=1700000000000,
             updatedAt=1700000000000,
         )
+
+    def _create_proposed_insight(
+        self,
+        insight_id,
+        suggested_action="Test action",
+        uid=None,
+    ):
+        """Create a legitimate proposed insight for HITL tests."""
+        uid = uid or self.alice_uid
+
+        valid_insight = Insight(
+            id=insight_id,
+            summary="Test proposed insight",
+            suggestedAction=suggested_action,
+            priority="medium",
+            confidence="high",
+            evidenceRefs=[
+                EvidenceReference(
+                    entryId="alice-entry-101",
+                    quote="refactor the auth middleware",
+                )
+            ],
+            status="proposed",
+            createdAt=int(time.time() * 1000),
+        )
+
+        from backend.app import action_engine
+
+        action_engine._ephemeral_insights_cache.setdefault(
+            uid, {}
+        )[insight_id] = valid_insight
+
+        return valid_insight
 
     # 1. Missing Authentication
     def test_01_missing_auth_rejected(self):
@@ -124,7 +162,10 @@ class TestActionAndInsightEngine(unittest.TestCase):
 
     # 4. Cross-User Action Access Denied (IDOR)
     def test_04_idor_cross_user_delete_rejected(self):
-        # Alice approves an action
+        # Alice must have a legitimate proposed insight before approval.
+        self._create_proposed_insight("insight-1", "Alice Private Action")
+
+        # Alice approves an action.
         action = asyncio.run(approve_personal_action(
             uid=self.alice_uid,
             insight_id="insight-1",
@@ -310,6 +351,11 @@ class TestActionAndInsightEngine(unittest.TestCase):
 
     # 15. Human-in-the-Loop: User Modification
     def test_15_user_modification_workflow(self):
+        self._create_proposed_insight(
+            "insight-102",
+            "Dedicate 45 minutes to refactoring auth middleware",
+        )
+
         modified = asyncio.run(approve_personal_action(
             uid=self.alice_uid,
             insight_id="insight-102",
@@ -324,6 +370,9 @@ class TestActionAndInsightEngine(unittest.TestCase):
 
     # 16. Persistence of Approved Actions
     def test_16_persistence_of_approved_actions(self):
+        self._create_proposed_insight("insight-a1", "First Action")
+        self._create_proposed_insight("insight-a2", "Second Action")
+
         # Alice approves two actions
         action1 = asyncio.run(approve_personal_action(
             uid=self.alice_uid,

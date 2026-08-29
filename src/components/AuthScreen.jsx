@@ -13,8 +13,17 @@ export const AuthScreen = ({ onSuccess }) => {
       await signInWithGoogle();
       if (onSuccess) onSuccess();
     } catch (err) {
+      console.error('Firebase Google Sign-In failed:', {
+        code: err?.code,
+        message: err?.message,
+        name: err?.name,
+        customData: err?.customData,
+      });
+
       if (err?.code !== 'auth/popup-closed-by-user') {
-        setErrorMessage('Unable to complete Google Sign-In. Please check popup permissions and retry.');
+        setErrorMessage(
+          'Unable to complete Google Sign-In. Please try again.'
+        );
       }
     } finally {
       setIsLoading(false);
