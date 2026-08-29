@@ -93,7 +93,7 @@ async def verify_firebase_token(authorization: Optional[str] = Header(None)) -> 
         decoded_token = firebase_auth.verify_id_token(token)
         uid = decoded_token.get("uid")
         if not uid:
-            raise AuthenticationError("Token verification did not yield a valid user ID")
+            raise AuthenticationError("Authentication failed")
 
         return AuthenticatedUser(
             uid=uid,
@@ -101,6 +101,8 @@ async def verify_firebase_token(authorization: Optional[str] = Header(None)) -> 
             displayName=decoded_token.get("name"),
             photoURL=decoded_token.get("picture"),
         )
+    except AuthenticationError:
+        raise
     except Exception as e:
-        logger.warning(f"Firebase token verification failed: {e}")
-        raise AuthenticationError(f"Authentication failed: {str(e)}")
+        logger.warning(f"Firebase token verification failed: {type(e).__name__}")
+        raise AuthenticationError("Authentication failed")

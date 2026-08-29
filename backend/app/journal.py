@@ -19,7 +19,7 @@ from .models import (
     MoodType
 )
 from .errors import NotFoundError, AuthorizationError
-from .validation import calculate_word_count
+from .validation import calculate_word_count, validate_tags
 
 logger = logging.getLogger("aegis_journal.journal")
 
@@ -71,7 +71,7 @@ async def create_journal_entry(uid: str, data: JournalEntryCreate) -> JournalEnt
         "title": data.title,
         "content": data.content,
         "mood": data.mood,
-        "tags": data.tags,
+        "tags": validate_tags(data.tags),
         "wordCount": word_count,
         "createdAt": now_ms,
         "updatedAt": now_ms,
@@ -180,7 +180,7 @@ async def update_journal_entry(uid: str, entry_id: str, data: JournalEntryUpdate
     if data.mood is not None:
         updated_data["mood"] = data.mood
     if data.tags is not None:
-        updated_data["tags"] = data.tags
+        updated_data["tags"] = validate_tags(data.tags)
 
     updated_data["updatedAt"] = int(time.time() * 1000)
 
@@ -200,7 +200,7 @@ async def update_journal_entry(uid: str, entry_id: str, data: JournalEntryUpdate
     return JournalEntryResponse(**updated_data)
 
 
-async def delete_journal_entry(uid: str, entry_id: str) -> None:
+async def delete_journal_entry(uid: str, entry_id: str) -> Dict[str, Any]:
     """Deletes a journal entry for the authenticated user only."""
     # Ensure entry exists and belongs to user
     await get_journal_entry(uid, entry_id)
@@ -216,3 +216,5 @@ async def delete_journal_entry(uid: str, entry_id: str) -> None:
 
     if uid in _memory_store and entry_id in _memory_store[uid]:
         del _memory_store[uid][entry_id]
+
+    return {"success": True, "id": entry_id}

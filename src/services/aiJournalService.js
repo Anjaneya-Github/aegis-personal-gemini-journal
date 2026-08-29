@@ -1,5 +1,7 @@
 import { getCurrentUserIdToken } from '../lib/firebase';
 
+const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || '';
+
 /**
  * Helper to execute authenticated requests to the backend server.
  * Never exposes API keys to the browser.
@@ -11,13 +13,14 @@ async function fetchWithAuth(endpoint, options = {}) {
     throw new Error('Authentication token not available. Please sign in.');
   }
 
+  const url = `${API_BASE_URL}${endpoint}`;
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`,
     ...(options.headers || {}),
   };
 
-  const response = await fetch(endpoint, {
+  const response = await fetch(url, {
     ...options,
     headers,
   });
@@ -81,7 +84,7 @@ export async function summarizeCompanionConversation(messages) {
  * Fetch server health status.
  */
 export async function checkServerHealth() {
-  const res = await fetch('/api/health');
+  const res = await fetch(`${API_BASE_URL}/api/health`);
   if (!res.ok) {
     throw new Error('Server health check failed');
   }

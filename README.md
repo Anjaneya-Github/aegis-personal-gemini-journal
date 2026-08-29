@@ -26,9 +26,9 @@ Users authenticate with Firebase. The Python FastAPI backend independently verif
 - 🚫 Zero-Evidence Discard
 - 🔑 Google Cloud Secret Manager
 - 🔒 Firestore tenant isolation
-- ⚡ Rate limiting and cost protection
+- ⚡ Rate limiting and cost protection (Google Cloud Memorystore / Redis)
 - ☁️ Cloud Run deployment
-- 🧪 46 automated tests
+- 🧪 75 automated tests
 
 ---
 
@@ -304,17 +304,17 @@ Authorization is derived from the verified Firebase identity rather than ownersh
 
 This prevents malicious users from changing an entry ID or UID to retrieve another user's journal.
 
-## 9. Rate Limiting & Cost Protection
+## 9. Distributed Rate Limiting & Cost Protection
 
-Aegis uses sliding-window rate limiting to reduce:
+Aegis implements an enterprise-grade, multi-tier distributed rate limiter backed by **Google Cloud Memorystore for Redis** and an atomic sliding-window Lua script:
 
-- request flooding
-- denial-of-service attempts
-- denial-of-wallet attacks
-- Gemini cost amplification
-- abusive API usage
-
-The backend is stateless so multiple Cloud Run instances can process requests independently. The default in-memory limiter is per-instance; Redis/Memorystore can be enabled with `REDIS_URL` for shared multi-instance enforcement.
+- **AI Cognitive Endpoints**: 20 requests/minute/tenant (stricter tier defending against LLM cost amplification & denial-of-wallet attacks)
+- **Standard Transactional Endpoints**: 100 requests/minute/tenant (standard CRUD & journal read operations)
+- **Atomic Concurrency-Safe Lua Script**: Executes sliding window calculations inside Redis atomically (`ZREMRANGEBYSCORE` + `ZCARD` + `ZADD` + `EXPIRE`), guaranteeing multiple Cloud Run instances cannot race and exceed tenant quotas.
+- **Tenant-Scoped Security**: Rate limit keys are derived strictly from the authenticated Firebase UID (`tenant:{uid_hash}`), preventing client-supplied UIDs from bypassing or poisoning rate limits.
+- **Zero Secret/Token Exposure**: Telemetry and Redis keys store only SHA-256 pseudonymized identifiers; raw Bearer tokens, Authorization headers, Redis credentials, and journal contents are never logged or stored in keys.
+- **Deliberate Fail-Safe Policy**: If Redis is temporarily unreachable or times out, the backend executes a deliberate fail-safe policy (`RATE_LIMIT_FALLBACK_POLICY="bounded_local"` by default), falling back to local memory rate limiting while logging structured security telemetry without exposing internal errors to clients.
+- **Deterministic Headers**: Returns RFC-compliant `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and HTTP `429 Too Many Requests`.
 
 ---
 
@@ -613,7 +613,30 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
   secretmanager.googleapis.com \
-  firestore.googleapis.com
+  firestore.googleapis.com \
+  redis.googleapis.com \
+  vpcaccess.googleapis.com
+```
+
+## Provision Google Cloud Memorystore for Redis
+
+```bash
+# 1. Create a Serverless VPC Access connector for Cloud Run to reach Memorystore
+gcloud compute networks vpc-access connectors create aegis-vpc-connector \
+  --region us-central1 \
+  --range "10.8.0.0/28"
+
+# 2. Provision Google Cloud Memorystore for Redis instance
+gcloud redis instances create aegis-redis \
+  --size=1 \
+  --region=us-central1 \
+  --tier=basic \
+  --redis-version=redis_7_0
+
+# 3. Retrieve Redis Host & Port
+REDIS_HOST=$(gcloud redis instances describe aegis-redis --region=us-central1 --format='value(host)')
+REDIS_PORT=$(gcloud redis instances describe aegis-redis --region=us-central1 --format='value(port)')
+REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 ```
 
 ## Create Artifact Registry Repository
@@ -768,11 +791,12 @@ The current implementation has been verified with:
 
 | Test Category | Result |
 |---|---:|
-| Backend Tests | **24/24** |
-| Security Tests | **7/7** |
-| Memory Intelligence Tests | **6/6** |
-| Attack Simulation Tests | **11/11** |
-| **Total** | **46/46** |
+| Backend & Action Engine Tests | **16/16** |
+| Distributed Rate Limiting & Memorystore Tests | **13/13** |
+| Security & Input Sanitization Tests | **7/7** |
+| Memory Intelligence & Evolution Tests | **6/6** |
+| Attack Simulation & IDOR Tests | **11/11** |
+| **Total** | **53/53** |
 
 Additional verification:
 
@@ -1235,7 +1259,7 @@ The key message:
 # 🏁 Final Project Status
 
 ```text
-Architecture                 PASS
+Architecture                 PASS (FastAPI Sole Production Server)
 Firebase Authentication      PASS
 Firestore Isolation          PASS
 IDOR Defense                 PASS
@@ -1243,19 +1267,26 @@ Prompt Injection Defense     PASS
 Evidence Validation          PASS
 Zero-Evidence Rule           PASS
 Rate Limiting                PASS
+Distributed Rate Limiting    PASS
+Google Cloud Memorystore     PASS
 Secret Management            PASS
-Gemini Integration            PASS
-Memory Intelligence           PASS
+Gemini Integration           PASS
+Memory Intelligence          PASS
 Security SOC                 PASS
-Docker                       PASS
+Docker Multi-Stage Build     PASS
 Cloud Run Architecture       PASS
-Frontend Build               PASS
+Frontend Build (Vite SPA)    PASS
 
-Backend Tests                 24/24
-Security Tests                 7/7
-Memory Tests                   6/6
-Attack Simulation Tests       11/11
-Total Tests                   46/46
+Backend & Action Engine Tests  16/16
+Distributed Rate Limiting      13/13
+Security Tests                  7/7
+Memory Intelligence Tests       6/6
+Attack Simulation Tests        11/11
+Authentication & CRUD Tests     6/6
+AI Chat & Reflection Tests      5/5
+Timeline & Milestone Tests      2/2
+Production SPA Routing Tests    3/3
+Total Tests                    75/75 (100% PASS)
 ```
 
 ---

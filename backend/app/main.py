@@ -407,14 +407,67 @@ async def delete_action_endpoint(
     return await delete_approved_action(uid=user.uid, action_id=action_id)
 
 
-# Static frontend hosting if dist directory exists (e.g. in container deployment)
-dist_dir = os.path.join(os.getcwd(), "dist")
-if os.path.isdir(dist_dir):
-    app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
+# -------------------------------------------------------------
+# Static Frontend Serving & Single Page App (SPA) Routing
+# -------------------------------------------------------------
 
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        file_path = os.path.join(dist_dir, full_path)
+def find_dist_dir() -> Optional[str]:
+    """Locates the compiled React Vite dist directory across container and local layouts."""
+    candidates = [
+        os.environ.get("DIST_DIR"),
+        os.path.join(os.getcwd(), "dist"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "dist"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dist"),
+        "/app/dist",
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isdir(candidate):
+            index_path = os.path.join(candidate, "index.html")
+            if os.path.isfile(index_path):
+                return candidate
+    for candidate in candidates:
+        if candidate and os.path.isdir(candidate):
+            return candidate
+    return None
+
+
+dist_dir = find_dist_dir()
+if dist_dir and os.path.isdir(dist_dir):
+    assets_dir = os.path.join(dist_dir, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+
+@app.get("/")
+async def serve_root():
+    """Serves the React frontend index.html on root path."""
+    current_dist = find_dist_dir()
+    if current_dist:
+        index_path = os.path.join(current_dist, "index.html")
+        if os.path.isfile(index_path):
+            return FileResponse(index_path, media_type="text/html")
+    return {"status": "ok", "service": "Aegis Journal API", "docs": "/docs"}
+
+
+@app.get("/{full_path:path}")
+async def serve_spa_fallback(full_path: str):
+    """
+    Serves static assets or falls back to index.html for client-side React routing.
+    Strictly preserves 404 for unhandled /api/* or /health endpoints.
+    """
+    # Guarantee API endpoints are never intercepted by SPA HTML fallback
+    if full_path.startswith("api/") or full_path == "api" or full_path == "health" or full_path.startswith("users/"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+
+    current_dist = find_dist_dir()
+    if current_dist:
+        file_path = os.path.join(current_dist, full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
-        return FileResponse(os.path.join(dist_dir, "index.html"))
+        index_path = os.path.join(current_dist, "index.html")
+        if os.path.isfile(index_path):
+            return FileResponse(index_path, media_type="text/html")
+
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="Not Found")

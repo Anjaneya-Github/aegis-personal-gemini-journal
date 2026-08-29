@@ -41,6 +41,22 @@ def validate_chat_messages(messages: List[ChatMessage]) -> List[ChatMessage]:
     return messages
 
 
+def validate_tags(tags: List[str]) -> List[str]:
+    """Sanitizes, lowercases, removes hashtag prefixes, and deduplicates tags."""
+    if not tags:
+        return []
+    cleaned_tags = []
+    seen = set()
+    for tag in tags:
+        if not isinstance(tag, str):
+            continue
+        cleaned = tag.strip().lstrip("#").lower()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            cleaned_tags.append(cleaned)
+    return cleaned_tags[:20]
+
+
 def calculate_word_count(text: str) -> int:
     """Calculates word count of text."""
     if not text:

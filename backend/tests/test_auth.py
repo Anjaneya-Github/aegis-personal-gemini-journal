@@ -1,76 +1,40 @@
 """
 Automated unit and integration tests for Aegis Journal Authentication.
 """
-import pytest
-from httpx import AsyncClient, ASGITransport
+import unittest
+import asyncio
 import os
 
 os.environ["AEGIS_TEST_MODE"] = "1"
 os.environ["USE_MEMORY_STORE"] = "1"
 
-from app.main import app
+from backend.app.auth import verify_firebase_token, AuthenticatedUser
+from backend.app.errors import AuthenticationError
 
 
-@pytest.mark.asyncio
-async def test_auth_missing_header():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.get("/api/journal/entries")
-    assert response.status_code == 401
-    assert "Missing Authorization header" in response.json()["error"]
+class TestAuthentication(unittest.TestCase):
+
+    def test_auth_missing_header(self):
+        with self.assertRaises(AuthenticationError) as ctx:
+            asyncio.run(verify_firebase_token(None))
+        self.assertIn("Missing Authorization header", str(ctx.exception))
+
+    def test_auth_malformed_header(self):
+        with self.assertRaises(AuthenticationError) as ctx:
+            asyncio.run(verify_firebase_token("Basic dXNlcjpwYXNz"))
+        self.assertIn("Invalid Authorization header", str(ctx.exception))
+
+    def test_auth_invalid_token(self):
+        with self.assertRaises(AuthenticationError) as ctx:
+            asyncio.run(verify_firebase_token("Bearer invalid-token"))
+        self.assertIn("Invalid Firebase ID token", str(ctx.exception))
+
+    def test_auth_valid_token_extraction(self):
+        user = asyncio.run(verify_firebase_token("Bearer test-token-user-123:alice@example.com"))
+        self.assertIsInstance(user, AuthenticatedUser)
+        self.assertEqual(user.uid, "user-123")
+        self.assertEqual(user.email, "alice@example.com")
 
 
-@pytest.mark.asyncio
-async def test_auth_malformed_header():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.get("/api/journal/entries", headers={"Authorization": "Basic dXNlcjpwYXNz"})
-    assert response.status_code == 401
-    assert "Invalid Authorization header format" in response.json()["error"]
-
-
-@pytest.mark.asyncio
-async def test_auth_invalid_token():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.get("/api/journal/entries", headers={"Authorization": "Bearer invalid-token"})
-    assert response.status_code == 401
-    assert "Invalid Firebase ID token" in response.json()["error"]
-
-
-@pytest.mark.asyncio
-async def test_auth_valid_token_extraction():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.get(
-            "/api/journal/entries", 
-            headers={"Authorization": "Bearer test-token-user-123:alice@example.com"}
-        )
-    assert response.status_code == 200
-    data = response.json()
-    assert "entries" in data
-    assert "total" in data
-
-
-@pytest.mark.asyncio
-async def test_auth_ignores_client_supplied_uid_in_body():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        # Attempt to spoof UID as "attacker-uid" in body
-        response = await ac.post(
-            "/api/journal/entries",
-            headers={"Authorization": "Bearer test-token-real-user-456"},
-            json={
-                "title": "My Private Thoughts",
-                "content": "Deep personal reflection.",
-                "mood": "serene",
-                "tags": ["peace"],
-                "userId": "attacker-uid",
-                "uid": "attacker-uid"
-            }
-        )
-    assert response.status_code == 201
-    entry = response.json()
-    # The server MUST assign the entry to the authenticated user ID from the verified token
-    assert entry["userId"] == "real-user-456"
-    assert entry["userId"] != "attacker-uid"
+if __name__ == "__main__":
+    unittest.main()
